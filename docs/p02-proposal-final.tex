@@ -1,0 +1,209 @@
+\documentclass[11pt, letterpaper]{article}
+\usepackage{amsmath, amssymb}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{geometry}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{tcolorbox}
+\usepackage{parskip}
+\geometry{margin=1in}
+
+\definecolor{courseblue}{HTML}{002452}
+\definecolor{coursegold}{HTML}{FABD0F}
+\definecolor{coursered}{HTML}{B90E31}
+\definecolor{lightblue}{HTML}{E8EEF7}
+
+\hypersetup{colorlinks=true,linkcolor=courseblue,urlcolor=coursered}
+
+\tcbuselibrary{skins}
+\newtcolorbox{guidancebox}{enhanced,colback=lightblue,colframe=courseblue,
+  sharp corners,leftrule=4pt,left=6pt,right=6pt,top=4pt,bottom=4pt}
+
+\pagestyle{fancy}\fancyhf{}
+\fancyhead[L]{\small\textcolor{courseblue}{\textbf{CISC 473 --- Deep Learning | Fall 2026}}}
+\fancyhead[R]{\small\textcolor{courseblue}{Project Proposal}}
+\fancyfoot[C]{\small\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\titleformat{\section}{\large\bfseries\color{courseblue}}{}{0em}{}[\titlerule]
+\titleformat{\subsection}{\normalsize\bfseries\color{courseblue}}{}{0em}{}
+
+\begin{document}
+
+{\centering
+  {\Large\textbf{CISC 473: Deep Learning --- Project Proposal}}\\[0.5em]
+  {\large\textit{P02: Noise-Aware Zero-Reference Low-Light Image Enhancement}}\\[0.4em]
+  \textbf{Group Members:}\\
+
+\begin{tabular}{lcl}
+{Bella Xu} &  20351957 & (Role: Project Lead)  \\
+{Mark Nistor}& 20412135 & (Role: Engineering and Research Lead)  \\
+\end{tabular}
+
+  {\small\textit{Two-member group as approved by the instructor.}}\\[0.3em]
+  \textbf{GitHub Repository:} \url{https://github.com/MarkLaMer/Noise-Aware-Deep-Curve-Estimation}\\[0.3em]
+  \textbf{Date:} \today\\[0.4em]
+  \rule{\linewidth}{0.4pt}
+}
+
+\section{Problem Statement and Motivation}
+
+Images captured in low light suffer from poor visibility, compressed contrast, colour distortion, and severe sensor noise. Enhancing images matters for human viewing where smartphone night photography has made low-light enhancement a mainstream feature, and as a processing step for downstream vision systems that rely on clear, well-exposed images for object detection, semantic segmentation and image classification. Object detectors trained primarily on daytime imagery degrade sharply on nighttime street scenes, which is a significant weakness in driver assistance and surveillance systems.
+
+The central difficulty is that many high-performing supervised enhancement methods require paired dark/bright training images, which are scarce and often difficult to collect because the same scene cannot be photographed twice under different illumination without some content changing. Zero-Reference Deep Curve Estimation (Zero-DCE)~\cite{guo2020zero} removes this requirement entirely by reformulating enhancement as the estimation of image-specific tonal-adjustment curves---functions that remap each pixel's brightness---trained with non-reference loss functions that encode exposure, colour-constancy, spatial-consistency, and smoothness priors. No reference image is ever seen during training. This makes the method deployable in any domain where dark images can be gathered, and its lightweight network ($\sim 79$K parameters) trains in hours on a CPU.
+
+However, Zero-DCE's formulation contains no explicit noise model. Brightening a dark region also amplifies the sensor noise in it, and the effect is most severe precisely where enhancement is most needed, such as in very dark imagery captured at high ISO, where the sensor signal is strongly amplified. This project reproduces Zero-DCE and Zero-DCE++, quantifies this noise amplification failure, and proposes a noise-aware extension of the zero-reference training objective, evaluated on a new domain: nighttime street scenes, using both the public Exclusively Dark (ExDark) dataset and a self-collected corpus of unpaired night photographs. We aim to answer the question: \textit{can noise suppression be added to zero-reference enhancement without sacrificing its defining property of training with no reference data at all?}
+
+\section{Literature Survey}
+
+\subsection{Related Works}
+
+Existing low-light enhancement methods fall into three groups relevant to this project: supervised restoration models that achieve strong reconstruction quality but require paired data (Papers 3--4); zero-reference curve-estimation models that remove this requirement but do not explicitly model sensor noise (Papers 1--2, 7); and recent noise-aware zero-reference or zero-shot methods that introduce dedicated noise-estimation or denoising components (Papers 5--6). The individual papers below are summarised as evidence for this structure.
+
+\paragraph{Paper 1: Guo et al., 2020, CVPR.}
+Guo et al.~\cite{guo2020zero} proposed Zero-Reference Deep Curve Estimation (Zero-DCE), a low-light image enhancement method that does not require paired or unpaired reference images during training. Instead of directly generating an enhanced image, Zero-DCE uses a lightweight Deep Curve Estimation Network (DCE-Net) to estimate image-specific enhancement curves and uses non-reference losses to control exposure, colour, spatial consistency, and illumination smoothness. On Part 2 of the Single Image Contrast Enhancement (SICE) benchmark, Zero-DCE achieved a peak signal-to-noise ratio (PSNR) of 19.13 dB and a structural similarity index measure (SSIM) of 0.692. However, the method does not explicitly handle image noise or use high-level semantic information, which may limit its performance in challenging low-light conditions. In our project, Zero-DCE will serve as the main baseline that we reproduce and evaluate before introducing our proposed improvement.
+
+\paragraph{Paper 2: Li et al., 2021, TPAMI.}
+Li et al.~\cite{li2021learning} proposed Zero-DCE++, a lighter and faster version of Zero-DCE. It follows the same zero-reference approach but uses a much smaller network, reducing the number of parameters from around 79K to 10K. On the LOw-Light (LOL) benchmark dataset, Zero-DCE++ achieved a PSNR of 14.82 dB and an SSIM of 0.560. The model requires only about 0.115 billion floating-point operations (0.115G FLOPs) and takes about 0.09 seconds to process a $1200 \times 900 \times 3$ image on a single CPU. This makes it much more efficient while still keeping similar enhancement quality to Zero-DCE. In our project, we will compare Zero-DCE++ with Zero-DCE in terms of image quality, model size, and processing speed.
+
+\paragraph{Paper 3: Zamir et al., 2020, ECCV.}
+Zamir et al.~\cite{zamir2020learning} proposed MIRNet, a deep learning model that processes images at multiple resolutions. It uses parallel multi-resolution branches and shares information across different scales, which helps the model keep image details while also learning information from a larger image area. MIRNet was tested on several image restoration tasks, including low-light image enhancement, denoising, and super-resolution. On the LOL dataset, MIRNet achieved a PSNR of 24.14 dB and an SSIM of 0.830 for low-light image enhancement. Unlike Zero-DCE and Zero-DCE++, MIRNet uses a larger and more complex network to improve image quality and recover details. In our project, MIRNet provides a useful comparison with the lightweight curve-based approach used by Zero-DCE.
+
+\paragraph{Paper 4: Xu et al., 2022, CVPR.}
+Xu et al.~\cite{xu2022snr} proposed a signal-to-noise ratio (SNR)-aware network for low-light image enhancement. The main idea is to use SNR information to guide the enhancement process. Areas with different SNR levels are processed differently, allowing the model to use local image information in regions with stronger signals and larger-scale information in regions where the signal is weak. This helps the model handle noise and recover details in very dark areas. On the LOL-v1 dataset, the full model achieved a PSNR of 24.61 dB and an SSIM of 0.842. When the SNR map was removed, the results dropped to 22.56 dB and 0.789, showing that the SNR information contributes to the enhancement performance. This is relevant to our project because Zero-DCE does not explicitly handle noise, which can become more visible when dark images are enhanced.
+
+\paragraph{Paper 5: Cao et al., 2024, Applied Sciences.}
+Cao et al.~\cite{cao2024zlen} proposed ZLEN, a zero-reference low-light image enhancement method that also considers image noise. The method uses a noise estimation module to estimate the noise level in low-light images and introduces a zero-reference noise loss to reduce noise during enhancement. On the LOL dataset, ZLEN achieved a PSNR of 18.25 dB, an SSIM of 0.684, and a Learned Perceptual Image Patch Similarity (LPIPS) score of 0.253. The ablation study also showed that removing the noise loss reduced the PSNR from 18.25 dB to 16.80 dB. This work is closely related to our project because it shows that noise-aware learning can improve zero-reference low-light enhancement. Our project will further study noise amplification in Zero-DCE and explore different noise-aware regularization methods within its curve-based framework.
+
+\paragraph{Paper 6: Shi et al., 2024, CVPR.}
+Shi et al.~\cite{shi2024zeroig} proposed ZERO-IG, a zero-shot method that jointly performs denoising and adaptive low-light image enhancement. The method learns directly from a single low-light image and uses illumination information to guide both enhancement and noise removal. On the LOL benchmark, ZERO-IG achieved a PSNR of 22.18 dB and an SSIM of 0.720. Its ablation study also showed that the denoising network and illumination-guided losses contribute to the final enhancement quality. This work is related to our project because it demonstrates that noise removal can be integrated with low-light enhancement without paired training data. However, ZERO-IG uses multiple dedicated networks for denoising and illumination estimation, while our project investigates whether noise amplification can be reduced through simpler noise-aware regularization within the lightweight curve-based Zero-DCE framework.
+
+\paragraph{Paper 7: Mi et al., 2024, Neural Processing Letters.}
+Mi et al.~\cite{mi2024rethinking} proposed Zero-DiDCE, an improved version of Zero-DCE designed to better handle images with different exposure levels. The method introduces an adaptive light enhancement curve, an iterator, and an amplitude controller to dynamically adjust the enhancement process. It was evaluated on the LOL, SICE, and DICM benchmark datasets, and achieved a PSNR of 18.23 dB, an SSIM of 0.72, and a NIMA score of 4.52 on the LOL dataset. The ablation study further showed that the adaptive components contribute to the improvement in enhancement quality. The authors also observed that excessive enhancement can amplify image noise and noted that noise suppression still has room for improvement. This work is closely related to our project because we also study noise amplification in Zero-DCE, but focus on noise-aware regularization rather than modifying its curve and iteration strategy.
+
+\subsection{Open Problem}
+
+There is a clear trade-off across the surveyed work. Supervised methods such as MIRNet and SNR-Aware achieve high reconstruction quality, and SNR-Aware in particular shows that modelling local noise levels can improve enhancement in very dark regions, but these methods rely on paired training data. Recent zero-reference and zero-shot methods such as ZLEN and ZERO-IG show that noise suppression can also be incorporated without paired references, but they introduce additional noise-estimation, denoising, or illumination-guided components. Meanwhile, Zero-DiDCE shows that excessive enhancement in Zero-DCE can amplify image noise and that noise suppression still has room for improvement. This leaves an open question: can noise amplification in Zero-DCE be reduced through lightweight noise-aware regularization without introducing dedicated denoising or noise-estimation networks or substantially changing its original curve-based architecture? Our project investigates this question and evaluates the resulting method on standard benchmarks and real nighttime street images, including data collected by ourselves.
+
+\section{Proposed Methodology}
+
+\subsection{Baseline}
+
+We will implement Zero-DCE from scratch in PyTorch, including the DCE-Net curve estimator, iterative curve application, and all four non-reference losses: exposure control, colour constancy, spatial consistency, and illumination smoothness. Following the course P02 protocol, we will train on the low-light images of the LOL training split---never exposing the model to their normal-light counterparts, which are used only for held-out evaluation---and compare our reproduction against reported benchmark results, additionally evaluating LPIPS and the no-reference Natural Image Quality Evaluator (NIQE) via the IQA-PyTorch image-quality-assessment library. (The original paper trains on SICE Part1; if time permits we will reproduce that setting separately and report it as such.) We will then implement Zero-DCE++ and reproduce its parameter and inference-speed comparison. Implementing the models from scratch, rather than directly adapting the original repository, will help us fully understand the training objective, which is the main component modified by our proposed extension. The official repository will only be used to cross-check our implementation. Training is expected to be CPU-feasible ($<$ 2 h per run).
+
+\subsection{Proposed Extension}
+
+Our hypothesis is that Zero-DCE is susceptible to noise amplification because its four non-reference losses do not explicitly distinguish useful scene detail from sensor noise: enhancement of very dark regions can therefore increase visible noise without incurring any direct penalty from the training objective. We investigate whether a lightweight noise-aware regularisation term can reduce this effect while preserving Zero-DCE's defining zero-reference training setting. The key constraint is that any new term must be computable from the dark input and the enhanced output alone, with no clean reference images, since removing that requirement is the method's entire advantage.
+
+We will first quantify noise amplification independently of any proposed mitigation. On real images, noise will be estimated from automatically selected low-gradient patches (near-uniform regions such as walls or sky) using detrended high-frequency residual statistics, reported relative to local luminance to account for enhancement gain, and complemented with no-reference quality scores (NIQE). We will additionally construct a controlled diagnostic set by applying known darkening and Poisson--Gaussian noise degradations to clean images; the clean images are used only for evaluation, never for training, so the zero-reference property is unaffected while providing measurable ground truth for the central hypothesis. All results will be stratified by input illumination level to test whether amplification grows as signal strength decreases.
+
+We will then implement and compare three candidate noise-aware loss terms:
+
+\begin{enumerate}[noitemsep]
+  \item \textbf{Darkness-gated smoothness loss}: a total-variation (TV) penalty on the output---TV discourages abrupt pixel-to-pixel intensity changes---weighted per pixel by estimated input darkness (a practical proxy for local SNR), so noise is suppressed only where the signal is weak;
+  \item \textbf{Self-supervised denoising regulariser}, adapted from Neighbor2Neighbor~\cite{huang2021n2n}: we sub-sample each enhanced output into pairs of neighbouring-pixel images and penalise their disagreement, transferring the original method's paired-subsampling consistency idea from a dedicated denoising network to a loss on DCE-Net's output;
+  \item \textbf{Curve-gain regularisation}: a penalty limiting how strongly the learned curves may amplify very dark, low-SNR regions, implemented by bounding the effective per-pixel gain $g = (I_{\text{out}} + \epsilon)/(I_{\text{in}} + \epsilon)$ (equivalently, the magnitude of the estimated curve parameters) as a function of local input luminance, so that very dark, low-SNR pixels cannot be amplified without limit.
+\end{enumerate}
+
+\subsection{Evaluation Plan}
+
+\begin{itemize}[noitemsep]
+  \item \textbf{Datasets:} LOL (standard benchmark, train/test splits as published); \textbf{ExDark}~\cite{loh2019getting} (7{,}363 real low-light images spanning 10 lighting conditions, with bounding-box annotations for 12 object classes) as a standardised nighttime evaluation set; a \textbf{self-collected corpus} of ${\sim}300$--$500$ unpaired nighttime street photographs (phone/dashcam), captured across multiple scenes, lighting conditions, and devices, with near-duplicates removed and any training/evaluation subsets split by scene; usable as training data because the method is zero-reference.
+  \item \textbf{Metrics:} PSNR, SSIM, LPIPS (where references exist); NIQE and the patch-based noise-level estimates described above (no-reference); additionally, a downstream utility metric: object-detection mAP@0.5 and recall on ExDark before vs.\ after enhancement, using a frozen pre-trained YOLO object detector with ExDark's 12 classes mapped to the detector's vocabulary and fixed IoU/confidence thresholds.
+  \item \textbf{Baselines:} reproduced Zero-DCE and Zero-DCE++ as controlled baselines; MIRNet~\cite{zamir2020learning} and SNR-Aware~\cite{xu2022snr} as supervised reference points---their published numbers for context, and, where feasible, their released pretrained models evaluated under our exact test protocol so that any comparison to published SOTA is like-for-like.
+  \item \textbf{Statistical reliability:} 3 seeds per configuration, mean $\pm$ std, fixed and version-controlled seeds and configs.
+  \item \textbf{Perceptual user study:} $\geq 15$ participants, Google Forms, randomised comparisons of input / Zero-DCE / Zero-DCE++ / NA-DCE.
+  \item \textbf{Ablations:} each candidate noise-aware term on/off; loss-weight sweep for the selected term.
+\end{itemize}
+
+\subsection{Early Novel Contribution (Optional Bonus)}
+
+We identify our intended novel contribution as \textit{a systematic study of lightweight, noise-aware regularisation for Zero-DCE that requires no additional networks or architectural changes, evaluated on a new domain---nighttime street scenes, including a self-collected unpaired corpus---with a downstream detection-based utility metric.} Recent work validates the direction but leaves our question open: ZLEN and ZERO-IG suppress noise in the zero-reference and zero-shot settings only by adding dedicated noise-estimation or denoising modules, whereas we ask how far pure loss-level regularisation can go within the unmodified curve-based framework. This follows two of the course guide's sanctioned contribution paths: application of a method to a new domain and dataset, and failure analysis with a targeted, quantitatively evaluated mitigation. Should the proposed losses underperform, the systematic characterization of noise amplification, together with the controlled failure analysis and new-domain evaluation, will still constitute a meaningful empirical contribution.
+
+\section{Project Timeline and Roles}
+
+\begin{center}
+\begin{tabular}{lp{9.5cm}l}
+\toprule
+\textbf{Week} & \textbf{Tasks} & \textbf{Responsible} \\
+\midrule
+1 & Read the core papers; download LOL and ExDark; set up the repository, environment, and continuous integration (CI) checks (Mark); initial paper notes and dataset audit (Bella) & Mark, Bella \\
+2 & Literature review and evaluation-plan finalisation (Bella); methodology and baseline plan (Mark); joint assembly \textbf{(Proposal due)} & Bella, Mark \\
+3 & Implement Zero-DCE from scratch and train on LOL (Mark); build and validate the metric harness, PSNR/SSIM/LPIPS/NIQE (Bella) & Mark, Bella \\
+4 & Implement Zero-DCE++ and quality/parameter/speed comparison (Mark); noise-amplification study and synthetic-noise diagnostic set (Bella); begin night-photo collection (Bella) & Mark, Bella \\
+5 & Implement the three candidate noise-aware losses (Mark); initial training runs and monitoring (Bella) & Mark, Bella \\
+6 & Preliminary results table and baseline comparison (Mark); user-study design and midterm report drafting (Bella) \textbf{(Midterm due)} & Bella, Mark \\
+7 & YOLO detection-recall/mAP experiment on ExDark (Mark); self-collected-corpus evaluation and perceptual user study (Bella) & Mark, Bella \\
+8 & Ablations: loss variants on/off, weight sweep; finalise 3-seed results (Mark); analysis and figure preparation (Bella) & Mark, Bella \\
+9 & Remaining experiments and before/after visual grids (Mark); final report drafting (Bella) & Bella, Mark \\
+10 & Finalise report, code, README, single-command reproduction; prepare presentation & Bella, Mark \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Contribution Declaration}
+
+\begin{tabular}{lp{10cm}c}
+\toprule
+\textbf{Member} & \textbf{Primary Responsibilities} & \textbf{Estimated \%} \\
+\midrule
+{Bella Xu} &   Submission logistics, literature review, data collection coordination, report writing, analysis & 50\%  \\
+{Mark Nistor} & Model implementation, report writing, analysis, experiments & 50\%  \\
+
+\bottomrule
+\end{tabular}
+\newpage
+
+\begin{thebibliography}{9}
+
+\bibitem{guo2020zero}
+Guo, C., Li, C., Guo, J., Loy, C.\,C., Hou, J., Kwong, S., Cong, R., 2020.
+``Zero-Reference Deep Curve Estimation for Low-Light Image Enhancement.''
+\textit{CVPR 2020}. arXiv:2001.06826.
+
+\bibitem{li2021learning}
+Li, C., Guo, C., Loy, C.\,C., 2021.
+``Learning to Enhance Low-Light Image via Zero-Reference Deep Curve Estimation.''
+\textit{IEEE TPAMI}. arXiv:2103.00860.
+
+\bibitem{zamir2020learning}
+Zamir, S.\,W., Arora, A., Khan, S., Hayat, M., Khan, F.\,S., Yang, M.-H., Shao, L., 2020.
+``Learning Enriched Features for Real Image Restoration and Enhancement.''
+\textit{ECCV 2020}. arXiv:2003.06792.
+
+\bibitem{xu2022snr}
+Xu, X., Wang, R., Fu, C.-W., Jia, J., 2022.
+``SNR-Aware Low-Light Image Enhancement.''
+\textit{CVPR 2022}. arXiv:2207.08789.
+
+\bibitem{loh2019getting}
+Loh, Y.\,P., Chan, C.\,S., 2019.
+``Getting to Know Low-light Images with the Exclusively Dark Dataset.''
+\textit{Computer Vision and Image Understanding}. arXiv:1805.11227.
+
+\bibitem{cao2024zlen}
+Cao, P., Niu, Q., Zhu, Y., Li, T., 2024.
+``A Zero-Reference Low-Light Image-Enhancement Approach Based on Noise Estimation.''
+\textit{Applied Sciences} 14(7), 2846. DOI: 10.3390/app14072846.
+
+\bibitem{shi2024zeroig}
+Shi, Y., Liu, D., Zhang, L., Tian, Y., Xia, X., Fu, X., 2024.
+``ZERO-IG: Zero-Shot Illumination-Guided Joint Denoising and Adaptive Enhancement
+for Low-Light Images.'' \textit{CVPR 2024}, pp. 3015--3024.
+
+\bibitem{mi2024rethinking}
+Mi, A.-Z., Luo, W., Qiao, Y., Huo, Z., 2024.
+``Rethinking Zero-DCE for Low-Light Image Enhancement.''
+\textit{Neural Processing Letters}. DOI: 10.1007/s11063-024-11565-5.
+
+\bibitem{huang2021n2n}
+Huang, T., Li, S., Jia, X., Lu, H., Liu, J., 2021.
+``Neighbor2Neighbor: Self-Supervised Denoising from Single Noisy Images.''
+\textit{CVPR 2021}. arXiv:2101.02824.
+
+\end{thebibliography}
+
+\end{document}
