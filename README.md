@@ -7,7 +7,7 @@ loss terms: no paired training data, no added networks, no architectural changes
 **CISC 473 Deep Learning, Capstone Project P02, Queen's University, Fall 2026**
 Bella Xu · Mark Nistor
 
-📄 [Project proposal (PDF)](docs/p02-proposal.pdf)
+📄 [Project proposal (PDF)](docs/CISC473_Group8_Proposal.pdf)
 
 ## The idea
 
