@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+data/
+outputs/
+*.pth
+*.aux
+*.log
+*.out

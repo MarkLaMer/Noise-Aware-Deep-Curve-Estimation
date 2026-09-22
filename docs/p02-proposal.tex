@@ -6,7 +6,8 @@
 \usepackage{xcolor}
 \usepackage{geometry}
 \usepackage{fancyhdr}
-\usepackage{titlesec}
+\usepackage[nobottomtitles*]{titlesec}
+\renewcommand{\bottomtitlespace}{0.15\textheight}
 \usepackage{tcolorbox}
 \usepackage{parskip}
 \geometry{margin=1in}
@@ -53,7 +54,7 @@
 
 Images captured in low light suffer from poor visibility, compressed contrast, colour distortion, and severe sensor noise. Enhancing images matters for human viewing where smartphone night photography has made low-light enhancement a mainstream feature, and as a processing step for downstream vision systems that rely on clear, well-exposed images for object detection, semantic segmentation and image classification. Object detectors trained primarily on daytime imagery degrade sharply on nighttime street scenes, which is a significant weakness in driver assistance and surveillance systems.
 
-The central difficulty is that many high-performing supervised enhancement methods require paired dark/bright training images, which are scarce and often difficult to collect because the same scene cannot be photographed twice under different illumination without some content changing. Zero-Reference Deep Curve Estimation (Zero-DCE)~\cite{guo2020zero} removes this requirement entirely by reformulating enhancement as the estimation of image-specific tonal-adjustment curves---functions that remap each pixel's brightness---trained with non-reference loss functions that encode exposure, colour-constancy, spatial-consistency, and smoothness priors. No reference image is ever seen during training. This makes the method deployable in any domain where dark images can be gathered, and its lightweight network ($\sim 79$K parameters) trains in hours on a CPU.
+The central difficulty is that many high-performing supervised enhancement methods require paired dark/bright training images, which are scarce and often difficult to collect because the same scene cannot be photographed twice under different illumination without some content changing. Zero-Reference Deep Curve Estimation (Zero-DCE)~\cite{guo2020zero} removes this requirement entirely by reformulating enhancement as the estimation of image-specific tonal-adjustment curves (functions that remap each pixel's brightness), trained with non-reference loss functions that encode exposure, colour-constancy, spatial-consistency, and smoothness priors. No reference image is ever seen during training. This makes the method deployable in any domain where dark images can be gathered, and its lightweight network ($\sim 79$K parameters) trains in hours on a CPU.
 
 However, Zero-DCE's formulation contains no explicit noise model. Brightening a dark region also amplifies the sensor noise in it, and the effect is most severe precisely where enhancement is most needed, such as in very dark imagery captured at high ISO, where the sensor signal is strongly amplified. This project reproduces Zero-DCE and Zero-DCE++, quantifies this noise amplification failure, and proposes a noise-aware extension of the zero-reference training objective, evaluated on a new domain: nighttime street scenes, using both the public Exclusively Dark (ExDark) dataset and a self-collected corpus of unpaired night photographs. We aim to answer the question: \textit{can noise suppression be added to zero-reference enhancement without sacrificing its defining property of training with no reference data at all?}
 
@@ -92,7 +93,7 @@ There is a clear trade-off across the surveyed work. Supervised methods such as 
 
 \subsection{Baseline}
 
-We will implement Zero-DCE from scratch in PyTorch, including the DCE-Net curve estimator, iterative curve application, and all four non-reference losses: exposure control, colour constancy, spatial consistency, and illumination smoothness. Following the course P02 protocol, we will train on the low-light images of the LOL training split---never exposing the model to their normal-light counterparts, which are used only for held-out evaluation---and compare our reproduction against reported benchmark results, additionally evaluating LPIPS and the no-reference Natural Image Quality Evaluator (NIQE) via the IQA-PyTorch image-quality-assessment library. (The original paper trains on SICE Part1; if time permits we will reproduce that setting separately and report it as such.) We will then implement Zero-DCE++ and reproduce its parameter and inference-speed comparison. Implementing the models from scratch, rather than directly adapting the original repository, will help us fully understand the training objective, which is the main component modified by our proposed extension. The official repository will only be used to cross-check our implementation. Training is expected to be CPU-feasible ($<$ 2 h per run).
+We will implement Zero-DCE from scratch in PyTorch, including the DCE-Net curve estimator, iterative curve application, and all four non-reference losses: exposure control, colour constancy, spatial consistency, and illumination smoothness. Following the course P02 protocol, we will train on the low-light images of the LOL training split, never exposing the model to their normal-light counterparts (these are used only for held-out evaluation), and compare our reproduction against reported benchmark results, additionally evaluating LPIPS and the no-reference Natural Image Quality Evaluator (NIQE) via the IQA-PyTorch image-quality-assessment library. (The original paper trains on SICE Part1; if time permits we will reproduce that setting separately and report it as such.) We will then implement Zero-DCE++ and reproduce its parameter and inference-speed comparison. Implementing the models from scratch, rather than directly adapting the original repository, will help us fully understand the training objective, which is the main component modified by our proposed extension. The official repository will only be used to cross-check our implementation. Training is expected to be CPU-feasible ($<$ 2 h per run).
 
 \subsection{Proposed Extension}
 
@@ -103,7 +104,7 @@ We will first quantify noise amplification independently of any proposed mitigat
 We will then implement and compare three candidate noise-aware loss terms:
 
 \begin{enumerate}[noitemsep]
-  \item \textbf{Darkness-gated smoothness loss}: a total-variation (TV) penalty on the output---TV discourages abrupt pixel-to-pixel intensity changes---weighted per pixel by estimated input darkness (a practical proxy for local SNR), so noise is suppressed only where the signal is weak;
+  \item \textbf{Darkness-gated smoothness loss}: a total-variation (TV) penalty on the output, which discourages abrupt pixel-to-pixel intensity changes, weighted per pixel by estimated input darkness (a practical proxy for local SNR), so noise is suppressed only where the signal is weak;
   \item \textbf{Self-supervised denoising regulariser}, adapted from Neighbor2Neighbor~\cite{huang2021n2n}: we sub-sample each enhanced output into pairs of neighbouring-pixel images and penalise their disagreement, transferring the original method's paired-subsampling consistency idea from a dedicated denoising network to a loss on DCE-Net's output;
   \item \textbf{Curve-gain regularisation}: a penalty limiting how strongly the learned curves may amplify very dark, low-SNR regions, implemented by bounding the effective per-pixel gain $g = (I_{\text{out}} + \epsilon)/(I_{\text{in}} + \epsilon)$ (equivalently, the magnitude of the estimated curve parameters) as a function of local input luminance, so that very dark, low-SNR pixels cannot be amplified without limit.
 \end{enumerate}
@@ -113,7 +114,7 @@ We will then implement and compare three candidate noise-aware loss terms:
 \begin{itemize}[noitemsep]
   \item \textbf{Datasets:} LOL (standard benchmark, train/test splits as published); \textbf{ExDark}~\cite{loh2019getting} (7{,}363 real low-light images spanning 10 lighting conditions, with bounding-box annotations for 12 object classes) as a standardised nighttime evaluation set; a \textbf{self-collected corpus} of ${\sim}300$--$500$ unpaired nighttime street photographs (phone/dashcam), captured across multiple scenes, lighting conditions, and devices, with near-duplicates removed and any training/evaluation subsets split by scene; usable as training data because the method is zero-reference.
   \item \textbf{Metrics:} PSNR, SSIM, LPIPS (where references exist); NIQE and the patch-based noise-level estimates described above (no-reference); additionally, a downstream utility metric: object-detection mAP@0.5 and recall on ExDark before vs.\ after enhancement, using a frozen pre-trained YOLO object detector with ExDark's 12 classes mapped to the detector's vocabulary and fixed IoU/confidence thresholds.
-  \item \textbf{Baselines:} reproduced Zero-DCE and Zero-DCE++ as controlled baselines; MIRNet~\cite{zamir2020learning} and SNR-Aware~\cite{xu2022snr} as supervised reference points---their published numbers for context, and, where feasible, their released pretrained models evaluated under our exact test protocol so that any comparison to published SOTA is like-for-like.
+  \item \textbf{Baselines:} reproduced Zero-DCE and Zero-DCE++ as controlled baselines; MIRNet~\cite{zamir2020learning} and SNR-Aware~\cite{xu2022snr} as supervised reference points: their published numbers for context, and, where feasible, their released pretrained models evaluated under our exact test protocol so that any comparison to published SOTA is like-for-like.
   \item \textbf{Statistical reliability:} 3 seeds per configuration, mean $\pm$ std, fixed and version-controlled seeds and configs.
   \item \textbf{Perceptual user study:} $\geq 15$ participants, Google Forms, randomised comparisons of input / Zero-DCE / Zero-DCE++ / NA-DCE.
   \item \textbf{Ablations:} each candidate noise-aware term on/off; loss-weight sweep for the selected term.
@@ -121,7 +122,7 @@ We will then implement and compare three candidate noise-aware loss terms:
 
 \subsection{Early Novel Contribution (Optional Bonus)}
 
-We identify our intended novel contribution as \textit{a systematic study of lightweight, noise-aware regularisation for Zero-DCE that requires no additional networks or architectural changes, evaluated on a new domain---nighttime street scenes, including a self-collected unpaired corpus---with a downstream detection-based utility metric.} Recent work validates the direction but leaves our question open: ZLEN and ZERO-IG suppress noise in the zero-reference and zero-shot settings only by adding dedicated noise-estimation or denoising modules, whereas we ask how far pure loss-level regularisation can go within the unmodified curve-based framework. This follows two of the course guide's sanctioned contribution paths: application of a method to a new domain and dataset, and failure analysis with a targeted, quantitatively evaluated mitigation. Should the proposed losses underperform, the systematic characterization of noise amplification, together with the controlled failure analysis and new-domain evaluation, will still constitute a meaningful empirical contribution.
+We identify our intended novel contribution as \textit{a systematic study of lightweight, noise-aware regularisation for Zero-DCE that requires no additional networks or architectural changes, evaluated on a new domain (nighttime street scenes, including a self-collected unpaired corpus) with a downstream detection-based utility metric.} Recent work validates the direction but leaves our question open: ZLEN and ZERO-IG suppress noise in the zero-reference and zero-shot settings only by adding dedicated noise-estimation or denoising modules, whereas we ask how far pure loss-level regularisation can go within the unmodified curve-based framework. This follows two of the course guide's sanctioned contribution paths: application of a method to a new domain and dataset, and failure analysis with a targeted, quantitatively evaluated mitigation. Should the proposed losses underperform, the systematic characterization of noise amplification, together with the controlled failure analysis and new-domain evaluation, will still constitute a meaningful empirical contribution.
 
 \section{Project Timeline and Roles}
 
@@ -155,7 +156,6 @@ We identify our intended novel contribution as \textit{a systematic study of lig
 
 \bottomrule
 \end{tabular}
-\newpage
 
 \begin{thebibliography}{9}
 

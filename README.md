@@ -1,14 +1,19 @@
-# NA-DCE — Noise-Aware Deep Curve Estimation
+# NA-DCE: Noise-Aware Deep Curve Estimation
 
-Noise-aware zero-reference low-light image enhancement (Zero-DCE extension), from scratch in PyTorch.
+Noise-aware zero-reference low-light image enhancement, implemented from scratch
+in PyTorch. Extends Zero-DCE (Guo et al., CVPR 2020) with lightweight noise-aware
+loss terms: no paired training data, no added networks, no architectural changes.
 
-CISC 473 Deep Learning capstone, Queen's University, Fall 2026. Group: Mark Nistor and Bella Xu.
+**CISC 473 Deep Learning, Capstone Project P02, Queen's University, Fall 2026**
+Bella Xu · Mark Nistor
 
-[Project proposal (PDF)](docs/CISC_473_Proposal.pdf)
+📄 [Project proposal (PDF)](docs/p02-proposal.pdf)
 
-## The Idea
+## The idea
 
-Zero-DCE enhances dark images by estimating per-pixel tonal curves, trained with zero reference images, but its losses contain no noise model, so brightening dark regions amplifies sensor noise. We quantify that failure, then test three
+Zero-DCE enhances dark images by estimating per-pixel tonal curves, trained with
+zero reference images. But its losses contain no noise model, so brightening
+dark regions amplifies sensor noise. We quantify that failure, then test three
 noise-aware loss terms that keep the zero-reference property:
 
 1. **Darkness-gated smoothness**: TV penalty weighted by input darkness
@@ -37,9 +42,10 @@ for download instructions (LOL, ExDark).
 
 ## Reproduce
 
-Coming with the midterm release: `scripts/reproduce.sh` single-command training + evaluation with fixed seeds (mean ± std over 3 seeds).
+Coming with the midterm release: `scripts/reproduce.sh`, a single-command
+training and evaluation run with fixed seeds (mean ± std over 3 seeds).
 
-## Repository Structure
+## Repository structure
 
     src/nadce/     model, losses, training
     scripts/       train / evaluate / reproduce entry points
