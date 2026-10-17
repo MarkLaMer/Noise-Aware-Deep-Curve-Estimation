@@ -2,3 +2,6 @@ torch
 torchvision
 numpy
 pillow
+scikit-image
+matplotlib
+scipy
