@@ -27,8 +27,6 @@ class DCENet(nn.Module):
         self.apply(init_weights)
 
     def forward(self, x):
-        # x1 = ..., x2 = ..., up to the 24-channel output
-        # return it
         x1 = F.relu(self.e_conv1(x))
         x2 = F.relu(self.e_conv2(x1))
         x3 = F.relu(self.e_conv3(x2))
