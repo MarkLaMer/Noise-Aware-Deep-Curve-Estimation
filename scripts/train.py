@@ -30,6 +30,10 @@ def main():
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--threads", type=int, default=0)
     parser.add_argument("--out", type=str, default=None)
+    if torch.cuda.is_available(): #gpu-accelerated training
+        parser.add_argument("--device", type=str, default="cuda")
+    else:
+        parser.add_argument("--device", type=str, default="cpu")
 
     # 3. Seeds, threads, output folder    
     args = parser.parse_args()
@@ -54,25 +58,50 @@ def main():
     
     ds = LOLLowDataset(args.data, limit=args.limit)
     loader = DataLoader(ds, batch_size=args.batch_size, shuffle=True, num_workers=0)
-    model = DCENet()
+    model = DCENet().to(args.device)
+    print("device:", args.device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
-    # training loop
+    # logging file: this writes the header row with the coln names
+    with open(os.path.join(args.out, "log.csv"), "w") as f: # write the log.csv or wipe if prev run left one
+        f.write("epoch,total,spa,exp,col,tv\n")
+
+    # training loop: loop for every epoch (full pass over training images)
     for epoch in tqdm(range(args.epochs), desc="total", position=0):
-        model.train()
+        model.train() # switch model to "training mode" (standard practice)
+        
+        # logging dict: running totals for each loss term for this epoch, reset to 0 at start of each epoch
+        sums = {"total": 0.0, "spa": 0.0, "exp": 0.0, "col": 0.0, "tv": 0.0}
+        n = 0 # batches count
+        
         bar = tqdm(loader, desc=f"epoch {epoch + 1}/{args.epochs}", position=1, leave=False)
-        for x in bar:
-            A = model(x)                         # 24 curve maps
-            y = apply_curves(x, A)               # enhanced image
-            total, parts = zero_dce_loss(x, y, A)
+        for x in bar:                            # x is a batch of 8 low-light images (8, 3, 256, 256) 
+            x = x.to(args.device)                # copy of this tensor to GPU (run in cuda) and save as x for future pointer
+            A = model(x)                         # DCE-Net predicts 24 curve maps per image (8 * RGB), each b/w range [-1, 1]
+            y = apply_curves(x, A)               # "computah, ENHANCE!" aka result image of curve LE(x) = x + A·x·(1 − x) applied 8 times
+            # total = weighted sum of the 4 losses (no ground truth used yet), 
+            # parts = the four weighted terms as plain floats, for logging only
+            total, parts = zero_dce_loss(x, y, A) 
 
-            optimizer.zero_grad()
-            total.backward()
+            # update total
+            sums["total"] += total.item() #.item() turns the 1-number tensor into a plain float
+            for k, v in parts.items():
+                sums[k] += v # add each loss term to running total
+            n += 1 # once per batch
+
+            optimizer.zero_grad() # clears the previous batch’s gradients
+            total.backward() # computes d(loss)/d(weight) for every weight
+            # Gradient clipping rescales the gradients if their combined size (norm) is over 0.1:
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
-            optimizer.step()
+            optimizer.step() # Adam update (good ol Adam)
 
+        # tqdm.write prints the last batch’s losses
         tqdm.write(f"epoch {epoch + 1}/{args.epochs}  loss {total.item():.4f}  {' '.join(f'{k}={v:.4f}' for k, v in parts.items())}")
+        # torch.save overwrites last.pth with the current weights every epoch (so crash at most deletes one epoch)
         torch.save(model.state_dict(), os.path.join(args.out, "last.pth"))
+
+        with open(os.path.join(args.out, "log.csv"), "a") as f: # "a" to append to the list another row
+            f.write(f"{epoch + 1},{sums['total'] / n},{sums['spa'] / n},{sums['exp'] / n},{sums['col'] / n},{sums['tv'] / n} \n") # dividing by n (batch) so that it is average per batch
 
 if __name__ == "__main__":
     main()
