@@ -1,6 +1,11 @@
 import torch
 import torch.nn.functional as F
 
+W_SPA = 1
+W_EXP = 10
+W_COL = 5
+W_TV = 200
+
 def exposure_loss(y, E=0.6, patch=16):
     """y: enhanced image (B,3,H,W). Returns a scalar."""
     # brightness per pixel        -> (B,1,H,W)
@@ -79,6 +84,41 @@ def spatial_loss(x, y):
     cX = Xp[:, :, 1:-1, 1:-1] # 1:-1 drops the first and last row and column, which removes the zero ring, so cX equals X again
     cY = Yp[:, :, 1:-1, 1:-1]
 
+    # left
+    lX = Xp[:, :, 1:-1, 0:-2]
+    lY = Yp[:, :, 1:-1, 0:-2]
+    D_left = ((cX - lX) - (cY - lY)) ** 2
+    
+    # right
+    rX = Xp[:, :, 1:-1, 2:]
+    rY = Yp[:, :, 1:-1, 2:]
+    D_right = ((cX - rX) - (cY - rY)) ** 2
+
+    # up
+    uX = Xp[:, :, 0:-2, 1:-1]
+    uY = Yp[:, :, 0:-2, 1:-1]
+    D_up = ((cX - uX) - (cY - uY)) ** 2
+
+    # down
+    dX = Xp[:, :, 2:, 1:-1]   
+    dY = Yp[:, :, 2:, 1:-1]
+    D_down = ((cX - dX) - (cY - dY)) ** 2
+
+    return (D_left + D_right + D_up + D_down).mean()
+
 def zero_dce_loss(x, y, A):
-    """frick"""
+    """combines the four losses"""
+    parts = {
+        "spa": W_SPA * spatial_loss(x, y),
+        "exp": W_EXP * exposure_loss(y), 
+        "col": W_COL * color_loss(y),
+        "tv":  W_TV * tv_loss(A)
+    }
+
+    total = sum(parts.values())
+
+    return total, {k: v.item() for k, v in parts.items()}
+    # That last part is a dict comprehension: 
+    # “for every name k and value v in parts, store v.item() under k”. 
+    # It’s a one-line loop that builds a new dict.
 
