@@ -5,3 +5,4 @@ pillow
 scikit-image
 matplotlib
 scipy
+tqdm

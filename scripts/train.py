@@ -13,6 +13,8 @@ from nadce.curves import apply_curves
 from nadce.data import LOLLowDataset
 from nadce.losses import zero_dce_loss
 from nadce.model import DCENet
+
+from tqdm import tqdm #progress bar
 # 1. holy Imports!
 
 def main():
@@ -56,9 +58,10 @@ def main():
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     # training loop
-    for epoch in range(args.epochs):
+    for epoch in tqdm(range(args.epochs), desc="total", position=0):
         model.train()
-        for x in loader:
+        bar = tqdm(loader, desc=f"epoch {epoch + 1}/{args.epochs}", position=1, leave=False)
+        for x in bar:
             A = model(x)                         # 24 curve maps
             y = apply_curves(x, A)               # enhanced image
             total, parts = zero_dce_loss(x, y, A)
@@ -68,7 +71,7 @@ def main():
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
             optimizer.step()
 
-        print(f"epoch {epoch + 1}/{args.epochs}  loss {total.item():.4f}  {parts}")
+        tqdm.write(f"epoch {epoch + 1}/{args.epochs}  loss {total.item():.4f}  {' '.join(f'{k}={v:.4f}' for k, v in parts.items())}")
         torch.save(model.state_dict(), os.path.join(args.out, "last.pth"))
 
 if __name__ == "__main__":
