@@ -70,6 +70,9 @@ def main():
     best = float("inf") # The best total loss seen so far, which is inf cause we have nothing this far
     best_epoch = 0
 
+    # Previews for image enhancement 
+    x_fixed = torch.stack([ds[i] for i in range(4)]).to(args.device)
+
     # training loop: loop for every epoch (full pass over training images)
     for epoch in tqdm(range(args.epochs), desc="total", position=0):
         model.train() # switch model to "training mode" (standard practice)
@@ -81,7 +84,7 @@ def main():
         bar = tqdm(loader, desc=f"epoch {epoch + 1}/{args.epochs}", position=1, leave=False)
         for x in bar:                            # x is a batch of 8 low-light images (8, 3, 256, 256) 
             x = x.to(args.device)                # copy of this tensor to GPU (run in cuda) and save as x for future pointer
-            A = model(x)                         # DCE-Net predicts 24 curve maps per image (8 * RGB), each b/w range [-1, 1]
+            A = model(x)                        # DCE-Net predicts 24 curve maps per image (8 * RGB), each b/w range [-1, 1]
             y = apply_curves(x, A)               # "computah, ENHANCE!" aka result image of curve LE(x) = x + A·x·(1 − x) applied 8 times
             # total = weighted sum of the 4 losses (no ground truth used yet), 
             # parts = the four weighted terms as plain floats, for logging only
@@ -123,6 +126,15 @@ def main():
         # Add to log.csv
         with open(os.path.join(args.out, "log.csv"), "a") as f: # "a" to append to the list another row
             f.write(f"{epoch + 1},{avg_sum['total']},{avg_sum['spa']},{avg_sum['exp']},{avg_sum['col']},{avg_sum['tv']} \n") 
-        
+
+
+        # 
+        if (epoch + 1) % 10 == 0 or epoch + 1 == args.epochs:
+            model.eval()
+            with torch.no_grad():
+                A_fixed = model(x_fixed)
+                y_fixed = apply_curves(x_fixed, A_fixed)
+                vutils.save_image(torch.cat([x_fixed, y_fixed]), os.path.join(args.out, f"preview_epoch{epoch + 1}.png"), nrow=4)
+
 if __name__ == "__main__":
     main()
