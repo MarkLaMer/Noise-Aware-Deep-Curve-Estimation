@@ -66,6 +66,10 @@ def main():
     with open(os.path.join(args.out, "log.csv"), "w") as f: # write the log.csv or wipe if prev run left one
         f.write("epoch,total,spa,exp,col,tv\n")
 
+    # best epoch tracker setup
+    best = float("inf") # The best total loss seen so far, which is inf cause we have nothing this far
+    best_epoch = 0
+
     # training loop: loop for every epoch (full pass over training images)
     for epoch in tqdm(range(args.epochs), desc="total", position=0):
         model.train() # switch model to "training mode" (standard practice)
@@ -95,13 +99,30 @@ def main():
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
             optimizer.step() # Adam update (good ol Adam)
 
-        # tqdm.write prints the last batch’s losses
-        tqdm.write(f"epoch {epoch + 1}/{args.epochs}  loss {total.item():.4f}  {' '.join(f'{k}={v:.4f}' for k, v in parts.items())}")
+        # Make a dict of average_sum from the sums
+        avg_sum = {}
+        for k, v in sums.items(): # k = total, v = running sum, then "spa", then "exp", ...
+            avg_sum[k] = v / n
+
+        # Check and save the best epoch
+        is_best = avg_sum["total"] < best
+        best_epoch_tag = ""
+        if is_best:
+            best = avg_sum["total"]
+            best_epoch = epoch + 1
+            torch.save(model.state_dict(), os.path.join(args.out, "best.pth"))
+            best_epoch_tag = "  *** new best"
+        else:
+            best_epoch_tag = ""
+
+        # tqdm.write prints the epoch-average losses, not last batch’s losses anymore to avoid havign noisy output
+        tqdm.write(f"epoch {epoch + 1}/{args.epochs}  {' '.join(f'{k}={v:.4f}' for k, v in avg_sum.items())} best {best:.4f} @ {best_epoch} {best_epoch_tag}")
         # torch.save overwrites last.pth with the current weights every epoch (so crash at most deletes one epoch)
         torch.save(model.state_dict(), os.path.join(args.out, "last.pth"))
-
+        
+        # Add to log.csv
         with open(os.path.join(args.out, "log.csv"), "a") as f: # "a" to append to the list another row
-            f.write(f"{epoch + 1},{sums['total'] / n},{sums['spa'] / n},{sums['exp'] / n},{sums['col'] / n},{sums['tv'] / n} \n") # dividing by n (batch) so that it is average per batch
-
+            f.write(f"{epoch + 1},{avg_sum['total']},{avg_sum['spa']},{avg_sum['exp']},{avg_sum['col']},{avg_sum['tv']} \n") 
+        
 if __name__ == "__main__":
     main()
